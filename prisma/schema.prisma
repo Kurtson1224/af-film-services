@@ -1,0 +1,237 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+  CLIENT
+}
+
+enum EquipmentStatus {
+  AVAILABLE
+  LOW_STOCK
+  OUT_OF_STOCK
+  MAINTENANCE
+}
+
+enum RentalStatus {
+  PENDING
+  RESERVED
+  PICKED_UP
+  RETURNED
+  LATE
+  CANCELLED
+}
+
+enum InventoryAction {
+  RENTAL_CREATED
+  RENTAL_RETURNED
+  PARTIAL_RETURN
+  MAINTENANCE_ADDED
+  DAMAGE_LOGGED
+  STOCK_ADJUSTMENT
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  fullName  String
+  role      UserRole @default(STAFF)
+  avatarUrl String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Client {
+  id                 String   @id @default(uuid())
+  name               String
+  company            String?
+  representative     String?
+  phone              String
+  email              String   @unique
+  address            String?
+  outstandingBalance Float    @default(0) @map("outstanding_balance")
+  notes              String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  rentals            Rental[]
+
+  @@map("clients")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  equipment   Equipment[]
+
+  @@map("categories")
+}
+
+model Equipment {
+  id                String          @id @default(uuid())
+  equipmentId       String          @unique @map("equipment_id")
+  name              String
+  categoryId        String          @map("category_id")
+  brand             String?
+  model             String?
+  serialNumber      String?         @unique @map("serial_number")
+  rentalPrice       Float           @map("rental_price") // Default daily price
+  dailyPrice        Float           @map("daily_price")
+  weeklyPrice       Float?          @map("weekly_price")
+  monthlyPrice      Float?          @map("monthly_price")
+  quantity          Int             @default(1)
+  availableQuantity Int             @default(1) @map("available_quantity")
+  reservedQuantity  Int             @default(0) @map("reserved_quantity")
+  damagedQuantity   Int             @default(0) @map("damaged_quantity")
+  status            EquipmentStatus @default(AVAILABLE)
+  imageUrl          String?         @map("image_url")
+  barcode           String?         @unique
+  notes             String?
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  category          Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  rentalItems       RentalItem[]
+  inventoryLogs     InventoryLog[]
+
+  @@map("equipment")
+}
+
+model Rental {
+  id               String       @id @default(uuid())
+  rentalNumber     String       @unique @map("rental_number")
+  clientId         String       @map("client_id")
+  representative   String?
+  projectName      String       @map("project_name")
+  location         String?
+  shootingDate     DateTime     @map("shooting_date")
+  callTime         String?      @map("call_time")
+  pickupDate       DateTime     @map("pickup_date")
+  returnDate       DateTime     @map("return_date")
+  status           RentalStatus @default(PENDING)
+  subtotal         Float        @default(0)
+  discount         Float        @default(0)
+  deposit          Float        @default(0)
+  tax              Float        @default(0)
+  grandTotal       Float        @default(0) @map("grand_total")
+  clientSignature  String?      @map("client_signature")
+  companySignature String?      @map("company_signature")
+  notes            String?
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  client           Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  rentalItems      RentalItem[]
+  returns          Return[]
+  payments         Payment[]
+  inventoryLogs    InventoryLog[]
+
+  @@map("rentals")
+}
+
+model RentalItem {
+  id                String    @id @default(uuid())
+  rentalId          String    @map("rental_id")
+  equipmentId       String    @map("equipment_id")
+  quantity          Int       @default(1)
+  returnedQuantity  Int       @default(0) @map("returned_quantity")
+  damagedQuantity   Int       @default(0) @map("damaged_quantity")
+  unitPrice         Float     @map("unit_price")
+  subtotal          Float
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  rental            Rental    @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  equipment         Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@map("rental_items")
+}
+
+model Return {
+  id                 String   @id @default(uuid())
+  rentalId           String   @map("rental_id")
+  returnDate         DateTime @default(now()) @map("return_date")
+  processedBy        String   @map("processed_by")
+  itemsReturnedCount Int      @default(0) @map("items_returned_count")
+  damagedCount       Int      @default(0) @map("damaged_count")
+  notes              String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  rental             Rental   @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@map("returns")
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  rentalId       String   @map("rental_id")
+  amount         Float
+  paymentMethod  String   @map("payment_method")
+  paymentStatus  String   @default("COMPLETED") @map("payment_status")
+  transactionRef String?  @map("transaction_ref")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  rental         Rental   @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model InventoryLog {
+  id               String          @id @default(uuid())
+  equipmentId      String          @map("equipment_id")
+  previousQuantity Int             @map("previous_quantity")
+  newQuantity      Int             @map("new_quantity")
+  changeAmount     Int             @map("change_amount")
+  action           InventoryAction
+  rentalId         String?         @map("rental_id")
+  userName         String          @map("user_name")
+  notes            String?
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  equipment        Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  rental           Rental?         @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+
+  @@map("inventory_logs")
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userName  String   @map("user_name")
+  userRole  UserRole @default(STAFF) @map("user_role")
+  action    String
+  module    String
+  details   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("activity_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String   @default("INFO") // LOW_STOCK, DUE_TOMORROW, OVERDUE, RETURNED
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
