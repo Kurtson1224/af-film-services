@@ -81,6 +81,18 @@ export interface RentalItem {
   notes?: string;
 }
 
+export interface PersonnelItem {
+  id: string;
+  description: string;
+  ratePerDay: number;
+}
+
+export interface TransportationItem {
+  id: string;
+  vehicle: string;
+  ratePerDay: number;
+}
+
 export interface Rental {
   id: string;
   rentalNumber: string; // E.g. REN-2026-001
@@ -97,11 +109,17 @@ export interface Rental {
   pickupDate: string;
   returnDate: string;
   status: RentalStatus;
+  days?: number;
   subtotal: number;
   discount: number;
   deposit: number;
   tax: number;
   grandTotal: number;
+  personnelTotal?: number;
+  transportationTotal?: number;
+  whtAmount?: number;
+  personnelItems?: PersonnelItem[];
+  transportationItems?: TransportationItem[];
   clientSignature?: string;
   companySignature?: string;
   notes?: string;
