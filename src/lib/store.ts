@@ -42,9 +42,21 @@ const loadTableFromSupabase = async <T>(tableName: string, fallback: T[]): Promi
 const saveTableToSupabase = async <T>(tableName: string, rows: T[]) => {
   if (!isSupabaseConfigured()) return;
 
-  const { error } = await supabase.from(tableName).upsert(rows as Record<string, unknown>[], { onConflict: "id" });
-  if (error) {
-   console.error(`Failed to save ${tableName} to Supabase`, error.message);
+  try {
+    const res = await fetch('/api/seed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upsert', table: tableName, rows }),
+    });
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      console.error(`Failed to save ${tableName} via server API`, json || { status: res.status });
+    } else {
+      console.log(`Saved ${tableName} via server API`, json);
+    }
+  } catch (e) {
+    console.error(`Save ${tableName} request failed`, e);
   }
 };
 
@@ -288,21 +300,25 @@ export function useAppStore() {
       localStorage.setItem(STORAGE_KEYS.EQUIPMENT, JSON.stringify(nextEquipment));
     }
 
-    // Try to persist only the new row to Supabase for clearer debugging and smaller payloads
+    // Try to persist only the new row to Supabase via server API for clearer debugging and to bypass RLS for server-side writes
     if (isSupabaseConfigured()) {
       try {
-        // Use upsert to avoid duplicates when the id already exists
-        const { data, error } = await supabase.from("equipment").upsert([newEq], { onConflict: "id" }).select();
-        if (error) {
-          console.error("Supabase upsert error (addEquipment)", error.message || error);
+        const res = await fetch('/api/seed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'upsert', table: 'equipment', rows: [newEq] }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          console.error('Supabase upsert error (addEquipment)', json || { status: res.status });
         } else {
-          console.log("Supabase upsert success (addEquipment)", data);
+          console.log('Supabase upsert success (addEquipment)', json);
         }
       } catch (e) {
-        console.error("Supabase addEquipment request failed", e);
+        console.error('Supabase addEquipment request failed', e);
       }
     } else {
-      console.log("Supabase not configured; equipment saved to localStorage only.");
+      console.log('Supabase not configured; equipment saved to localStorage only.');
     }
 
     // Log activity (async) but don't block the user flow on logging
