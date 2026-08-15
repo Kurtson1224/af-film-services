@@ -281,9 +281,29 @@ export function useAppStore() {
       updatedAt: new Date().toISOString(),
     };
 
+    // Optimistically update local store + localStorage
     const nextEquipment = [newEq, ...storeState.equipment];
-    // Use saveEquipment which persists to localStorage and Supabase when configured
-    await saveEquipment(nextEquipment);
+    updateStore((state) => ({ ...state, equipment: nextEquipment }));
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEYS.EQUIPMENT, JSON.stringify(nextEquipment));
+    }
+
+    // Try to persist only the new row to Supabase for clearer debugging and smaller payloads
+    if (isSupabaseConfigured()) {
+      try {
+        // Use upsert to avoid duplicates when the id already exists
+        const { data, error } = await supabase.from("equipment").upsert([newEq], { onConflict: "id" }).select();
+        if (error) {
+          console.error("Supabase upsert error (addEquipment)", error.message || error);
+        } else {
+          console.log("Supabase upsert success (addEquipment)", data);
+        }
+      } catch (e) {
+        console.error("Supabase addEquipment request failed", e);
+      }
+    } else {
+      console.log("Supabase not configured; equipment saved to localStorage only.");
+    }
 
     // Log activity (async) but don't block the user flow on logging
     logActivity("Added Equipment", "Inventory Management", `Added ${newEq.name} (${newEq.equipmentId})`);
