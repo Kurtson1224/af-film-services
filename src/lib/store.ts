@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { supabase } from "@/lib/supabase";
 import { 
   Equipment, EquipmentStatus, Category, Client, Rental, InventoryLog, ActivityLog, Notification, UserRole 
 } from "@/types";
@@ -18,6 +19,33 @@ const STORAGE_KEYS = {
   ACTIVITY_LOGS: "af_activity_logs_v1",
   NOTIFICATIONS: "af_notifications_v1",
   USER_ROLE: "af_user_role_v1",
+};
+
+const isSupabaseConfigured = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  return Boolean(url && key && url !== "https://example.supabase.co" && key !== "******");
+};
+
+const loadTableFromSupabase = async <T>(tableName: string, fallback: T[]): Promise<T[]> => {
+  if (!isSupabaseConfigured()) return fallback;
+
+  const { data, error } = await supabase.from(tableName).select("*");
+  if (error) {
+   console.error(`Failed to fetch ${tableName} from Supabase`, error.message);
+   return fallback;
+  }
+
+  return (data ?? []) as T[];
+};
+
+const saveTableToSupabase = async <T>(tableName: string, rows: T[]) => {
+  if (!isSupabaseConfigured()) return;
+
+  const { error } = await supabase.from(tableName).upsert(rows as Record<string, unknown>[], { onConflict: "id" });
+  if (error) {
+   console.error(`Failed to save ${tableName} to Supabase`, error.message);
+  }
 };
 
 type AppStoreState = {
@@ -56,51 +84,73 @@ const updateStore = (updater: (state: AppStoreState) => AppStoreState) => {
   emit();
 };
 
-const loadFromStorage = () => {
-  if (typeof window === "undefined") return;
+const readLocalStorageState = () => {
+  if (typeof window === "undefined") return {} as Partial<AppStoreState>;
+
+  const state: Partial<AppStoreState> = {};
 
   try {
     const storedEq = localStorage.getItem(STORAGE_KEYS.EQUIPMENT);
-    if (storedEq) {
-      storeState = { ...storeState, equipment: JSON.parse(storedEq) };
-    }
+    if (storedEq) state.equipment = JSON.parse(storedEq) as Equipment[];
 
     const storedCat = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-    if (storedCat) {
-      storeState = { ...storeState, categories: JSON.parse(storedCat) };
-    }
+    if (storedCat) state.categories = JSON.parse(storedCat) as Category[];
 
     const storedCli = localStorage.getItem(STORAGE_KEYS.CLIENTS);
-    if (storedCli) {
-      storeState = { ...storeState, clients: JSON.parse(storedCli) };
-    }
+    if (storedCli) state.clients = JSON.parse(storedCli) as Client[];
 
     const storedRen = localStorage.getItem(STORAGE_KEYS.RENTALS);
-    if (storedRen) {
-      storeState = { ...storeState, rentals: JSON.parse(storedRen) };
-    }
+    if (storedRen) state.rentals = JSON.parse(storedRen) as Rental[];
 
     const storedInv = localStorage.getItem(STORAGE_KEYS.INVENTORY_LOGS);
-    if (storedInv) {
-      storeState = { ...storeState, inventoryLogs: JSON.parse(storedInv) };
-    }
+    if (storedInv) state.inventoryLogs = JSON.parse(storedInv) as InventoryLog[];
 
     const storedAct = localStorage.getItem(STORAGE_KEYS.ACTIVITY_LOGS);
-    if (storedAct) {
-      storeState = { ...storeState, activityLogs: JSON.parse(storedAct) };
-    }
+    if (storedAct) state.activityLogs = JSON.parse(storedAct) as ActivityLog[];
 
     const storedNot = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
-    if (storedNot) {
-      storeState = { ...storeState, notifications: JSON.parse(storedNot) };
-    }
+    if (storedNot) state.notifications = JSON.parse(storedNot) as Notification[];
 
     const storedRole = localStorage.getItem(STORAGE_KEYS.USER_ROLE);
-    if (storedRole) {
-      storeState = { ...storeState, userRole: storedRole as UserRole };
-    }
+    if (storedRole) state.userRole = storedRole as UserRole;
   } catch (e) {
     console.error("Failed to load local storage store", e);
+  }
+
+  return state;
+};
+
+const loadFromStorage = async () => {
+  if (typeof window === "undefined") return;
+
+  try {
+    const localState = readLocalStorageState();
+    storeState = { ...storeState, ...localState };
+
+    if (isSupabaseConfigured()) {
+      const [categories, clients, equipment, rentals, inventoryLogs, activityLogs, notifications] = await Promise.all([
+        loadTableFromSupabase<Category>("categories", localState.categories ?? initialCategories),
+        loadTableFromSupabase<Client>("clients", localState.clients ?? initialClients),
+        loadTableFromSupabase<Equipment>("equipment", localState.equipment ?? initialEquipment),
+        loadTableFromSupabase<Rental>("rentals", localState.rentals ?? initialRentals),
+        loadTableFromSupabase<InventoryLog>("inventory_logs", localState.inventoryLogs ?? initialInventoryLogs),
+        loadTableFromSupabase<ActivityLog>("activity_logs", localState.activityLogs ?? initialActivityLogs),
+        loadTableFromSupabase<Notification>("notifications", localState.notifications ?? initialNotifications),
+      ]);
+
+      storeState = {
+        ...storeState,
+        categories: categories.length ? categories : (localState.categories ?? initialCategories),
+        clients: clients.length ? clients : (localState.clients ?? initialClients),
+        equipment: equipment.length ? equipment : (localState.equipment ?? initialEquipment),
+        rentals: rentals.length ? rentals : (localState.rentals ?? initialRentals),
+        inventoryLogs: inventoryLogs.length ? inventoryLogs : (localState.inventoryLogs ?? initialInventoryLogs),
+        activityLogs: activityLogs.length ? activityLogs : (localState.activityLogs ?? initialActivityLogs),
+        notifications: notifications.length ? notifications : (localState.notifications ?? initialNotifications),
+      };
+    }
+  } catch (e) {
+    console.error("Failed to load app data", e);
   } finally {
     updateStore((state) => ({ ...state, isLoaded: true }));
   }
@@ -122,25 +172,28 @@ export function useAppStore() {
     () => storeState,
   );
 
-  const saveEquipment = (data: Equipment[]) => {
+  const saveEquipment = async (data: Equipment[]) => {
     updateStore((state) => ({ ...state, equipment: data }));
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.EQUIPMENT, JSON.stringify(data));
     }
+    await saveTableToSupabase("equipment", data);
   };
 
-  const saveRentals = (data: Rental[]) => {
+  const saveRentals = async (data: Rental[]) => {
     updateStore((state) => ({ ...state, rentals: data }));
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.RENTALS, JSON.stringify(data));
     }
+    await saveTableToSupabase("rentals", data);
   };
 
-  const saveClients = (data: Client[]) => {
+  const saveClients = async (data: Client[]) => {
     updateStore((state) => ({ ...state, clients: data }));
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(data));
     }
+    await saveTableToSupabase("clients", data);
   };
 
   const saveRole = (role: UserRole) => {
@@ -150,7 +203,7 @@ export function useAppStore() {
     }
   };
 
-  const logActivity = (action: string, module: string, details?: string) => {
+  const logActivity = async (action: string, module: string, details?: string) => {
     const newEntry: ActivityLog = {
       id: "act-" + Date.now(),
       userName: storeState.userRole === "ADMIN" ? "Admin User" : storeState.userRole === "STAFF" ? "Staff Member" : "Client User",
@@ -166,9 +219,10 @@ export function useAppStore() {
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(nextLogs));
     }
+    await saveTableToSupabase("activity_logs", nextLogs);
   };
 
-  const logInventoryChange = (
+  const logInventoryChange = async (
     equipmentId: string,
     equipmentName: string,
     previousQty: number,
@@ -196,9 +250,10 @@ export function useAppStore() {
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.INVENTORY_LOGS, JSON.stringify(nextLogs));
     }
+    await saveTableToSupabase("inventory_logs", nextLogs);
   };
 
-  const addNotification = (title: string, message: string, type: Notification["type"], link?: string) => {
+  const addNotification = async (title: string, message: string, type: Notification["type"], link?: string) => {
     const newNotif: Notification = {
       id: "notif-" + Date.now(),
       title,
@@ -214,9 +269,10 @@ export function useAppStore() {
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(nextNotifications));
     }
+    await saveTableToSupabase("notifications", nextNotifications);
   };
 
-  const addEquipment = (eq: Omit<Equipment, "id" | "createdAt" | "updatedAt">) => {
+  const addEquipment = async (eq: Omit<Equipment, "id" | "createdAt" | "updatedAt">) => {
     const newEq: Equipment = {
       ...eq,
       id: "eq-" + Date.now(),
@@ -226,11 +282,10 @@ export function useAppStore() {
     };
 
     const nextEquipment = [newEq, ...storeState.equipment];
-    updateStore((state) => ({ ...state, equipment: nextEquipment }));
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.EQUIPMENT, JSON.stringify(nextEquipment));
-    }
+    // Use saveEquipment which persists to localStorage and Supabase when configured
+    await saveEquipment(nextEquipment);
 
+    // Log activity (async) but don't block the user flow on logging
     logActivity("Added Equipment", "Inventory Management", `Added ${newEq.name} (${newEq.equipmentId})`);
   };
 
