@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { 
   Package, 
@@ -31,8 +31,16 @@ export default function InventoryPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [barcodeModalEquipment, setBarcodeModalEquipment] = useState<Equipment | null>(null);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+
+    const timer = setTimeout(() => setToastMessage(null), 2200);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   // Filtering Logic
   const filteredEquipment = equipment.filter((item) => {
@@ -65,8 +73,20 @@ export default function InventoryPage() {
     }
   };
 
+  const handleSaved = (message: string) => {
+    setToastMessage(message);
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {toastMessage && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 shadow-lg animate-in fade-in">
+            <p className="text-xs font-bold text-emerald-700">{toastMessage}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -261,6 +281,7 @@ export default function InventoryPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         initialData={editingEquipment}
+        onSaved={handleSaved}
       />
 
       {/* Barcode & QR Code Modal */}
