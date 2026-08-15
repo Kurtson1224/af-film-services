@@ -161,9 +161,10 @@ export function useAppStore() {
       createdAt: new Date().toISOString(),
     };
 
-    updateStore((state) => ({ ...state, activityLogs: [newEntry, ...state.activityLogs] }));
+    const nextLogs = [newEntry, ...storeState.activityLogs];
+    updateStore((state) => ({ ...state, activityLogs: nextLogs }));
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify([newEntry, ...storeState.activityLogs]));
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(nextLogs));
     }
   };
 
@@ -190,9 +191,10 @@ export function useAppStore() {
       createdAt: new Date().toISOString(),
     };
 
-    updateStore((state) => ({ ...state, inventoryLogs: [newLog, ...state.inventoryLogs] }));
+    const nextLogs = [newLog, ...storeState.inventoryLogs];
+    updateStore((state) => ({ ...state, inventoryLogs: nextLogs }));
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.INVENTORY_LOGS, JSON.stringify([newLog, ...storeState.inventoryLogs]));
+      localStorage.setItem(STORAGE_KEYS.INVENTORY_LOGS, JSON.stringify(nextLogs));
     }
   };
 
@@ -207,9 +209,10 @@ export function useAppStore() {
       createdAt: new Date().toISOString(),
     };
 
-    updateStore((state) => ({ ...state, notifications: [newNotif, ...state.notifications] }));
+    const nextNotifications = [newNotif, ...storeState.notifications];
+    updateStore((state) => ({ ...state, notifications: nextNotifications }));
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify([newNotif, ...storeState.notifications]));
+      localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(nextNotifications));
     }
   };
 
@@ -222,9 +225,10 @@ export function useAppStore() {
       updatedAt: new Date().toISOString(),
     };
 
-    updateStore((state) => ({ ...state, equipment: [newEq, ...state.equipment] }));
+    const nextEquipment = [newEq, ...storeState.equipment];
+    updateStore((state) => ({ ...state, equipment: nextEquipment }));
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.EQUIPMENT, JSON.stringify([newEq, ...storeState.equipment]));
+      localStorage.setItem(STORAGE_KEYS.EQUIPMENT, JSON.stringify(nextEquipment));
     }
 
     logActivity("Added Equipment", "Inventory Management", `Added ${newEq.name} (${newEq.equipmentId})`);
